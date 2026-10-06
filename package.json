@@ -1,0 +1,44 @@
+{
+  "name": "@profullstack/proxy",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Call the web through the residential proxies we pay for (Proxiware, Webshare) with each provider's own auth and targeting. A library (proxyFetch, proxyUrl), a CLI (`proxy <url>`), a local forward proxy with a JSON API (`proxy serve`), an MCP server (`proxy mcp`) and a TUI (`proxy tui`).",
+  "keywords": [
+    "proxy",
+    "residential-proxy",
+    "rotating-proxy",
+    "proxiware",
+    "webshare",
+    "undici",
+    "proxyagent",
+    "https-proxy",
+    "forward-proxy",
+    "mcp",
+    "cli",
+    "tui"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/profullstack/proxy.git"
+  },
+  "homepage": "https://github.com/profullstack/proxy#readme",
+  "bugs": { "url": "https://github.com/profullstack/proxy/issues" },
+  "license": "MIT",
+  "author": "Profullstack, Inc.",
+  "exports": {
+    ".": { "types": "./index.d.ts", "import": "./src/index.js" },
+    "./providers": { "types": "./index.d.ts", "import": "./src/providers.js" },
+    "./server": { "types": "./index.d.ts", "import": "./src/server.js" },
+    "./mcp": { "types": "./index.d.ts", "import": "./src/mcp.js" },
+    "./cli": { "types": "./index.d.ts", "import": "./src/cli.js" },
+    "./package.json": "./package.json"
+  },
+  "types": "./index.d.ts",
+  "bin": { "proxy": "bin/proxy.js" },
+  "files": ["src", "bin", "index.d.ts", "README.md", "LICENSE"],
+  "engines": { "node": ">=22.19" },
+  "sideEffects": false,
+  "publishConfig": { "access": "public" },
+  "dependencies": { "undici": "^8.11.2" },
+  "scripts": { "test": "node --test" }
+}
