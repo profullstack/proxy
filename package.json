@@ -1,14 +1,15 @@
 {
   "name": "@profullstack/proxy",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Call the web through the residential proxies we pay for (Proxiware, Webshare) with each provider's own auth and targeting. A library (proxyFetch, proxyUrl), a CLI (`proxy <url>`), a local forward proxy with a JSON API (`proxy serve`), an MCP server (`proxy mcp`) and a TUI (`proxy tui`).",
+  "description": "Call the web through the residential proxies we pay for (Proxiware, Webshare, HProxy) with each provider's own auth and targeting. A library (proxyFetch, proxyUrl), a CLI (`proxy <url>`), a local forward proxy with a JSON API (`proxy serve`), an MCP server (`proxy mcp`) and a TUI (`proxy tui`).",
   "keywords": [
     "proxy",
     "residential-proxy",
     "rotating-proxy",
     "proxiware",
     "webshare",
+    "hproxy",
     "undici",
     "proxyagent",
     "https-proxy",

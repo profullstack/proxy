@@ -18,6 +18,11 @@ Providers:
   `-sid-<n>-ttl-<min>`. Defaults to a US exit.
 - **Webshare** (`p.webshare.io:80`). `-rotate`, `-US-rotate`, or `-<n>` to pin
   proxy n. With only `WEBSHARE_API_KEY`, the proxy login is read from the API.
+- **HProxy** Residential, pay per GB (`premium.hproxy.com:10000`). Username
+  grammar `-type-residential-country-us-state-…-city-…-session-<id>-lifetime-<min>`
+  (lifetime 3 to 1440, default 30 with a session). Defaults to a US exit. With
+  only `HPROXY_API_KEY`, lines come from HProxy's generate API instead and are
+  used as-is. See [HProxy: what is verified](#hproxy-what-is-verified).
 
 ## Install
 
@@ -41,7 +46,11 @@ Environment only; the package never reads or writes a file.
 | `WEBSHARE_API_KEY` | account status, and the proxy login when no user/password is set |
 | `WEBSHARE_PROXY_USER`, `WEBSHARE_PROXY_PASSWORD` | proxy login, skips the API lookup |
 | `WEBSHARE_PROXY_HOST`, `WEBSHARE_PROXY_PORT` | override `p.webshare.io:80` |
-| `PROXY_PROVIDER` | default provider when several are configured (else proxiware, then webshare) |
+| `HPROXY_PROXY_USER`, `HPROXY_PROXY_PASSWORD` | proxy login (HProxy dashboard, the plan's credential pair) |
+| `HPROXY_API_KEY` | `hpx_…` key: account status, and generated lines when no user/password is set |
+| `HPROXY_PLAN_ID` | plan to generate lines from (default: the first residential plan) |
+| `HPROXY_PROXY_HOST`, `HPROXY_PROXY_PORT` | override `premium.hproxy.com:10000` |
+| `PROXY_PROVIDER` | default provider when several are configured (else proxiware, then webshare, then hproxy) |
 | `PROXY_SERVE_TOKEN` | default `--token` for `proxy serve` |
 
 ## CLI
@@ -57,12 +66,36 @@ proxy url                                    # http://user-country-us:***@unlimi
 export HTTPS_PROXY="$(proxy url --reveal)"   # hand the real URL to another tool
 proxy status                                 # credit, plans, renewal, expiry
 proxy -p webshare ip                         # a specific provider
+proxy -p hproxy -c de --city berlin -s w1 --ttl 30 ip   # HProxy, sticky Berlin exit
 ```
 
 The default User-Agent is `curl/8.5.0 (+@profullstack/proxy)`: some APIs (ESPN)
 allowlist curl-like agents and refuse browser and runtime defaults whatever the
 exit IP. `-A` overrides it. Exit codes: 0 ok, 22 non-2xx response (curl's
 `--fail`), 3 no credentials, 2 bad arguments, 1 anything else.
+
+## HProxy: what is verified
+
+Built 2026-10-07 from HProxy's own docs (`hproxy.com/llms-full.txt` and
+`hproxy.com/api/v1/openapi.json`), without an account, so **nothing here has
+carried live traffic yet**.
+
+- Verified in their docs: the two example Residential Premium lines,
+  `premium.hproxy.com:10000:USERNAME-type-residential-country-de-city-berlin-os-windows-session-…-lifetime-30:PASSWORD`
+  (HTTP) and `premium.hproxy.com:12000:…-asn-7922-requireUdp-true-session-…-lifetime-1440:PASSWORD`
+  (SOCKS5); lifetime in minutes, 3 to 1440; the API (`https://hproxy.com/api/v1`,
+  `X-API-Key: hpx_…`, `GET /me`, `GET /wallet`, `GET /plans`,
+  `POST /plans/{id}/generate`).
+- **Unverified**: the `-state-<name>` token (a documented API field, but no
+  example line shows it); whether a username without `-session-` rotates per
+  request on port 10000 (the docs call 10000 a sticky port, and the rotating
+  port range is only in the authenticated plan object); Residential Lite, whose
+  host and grammar are not published. HProxy also says the grammar "varies by
+  pool" and to use generated lines verbatim, which is what `HPROXY_API_KEY`
+  without a user/password does. If a hand-built username 407s or will not
+  rotate, use that path, or set `HPROXY_PROXY_PORT` from a generated line.
+- With the API path a session id maps to one generated sticky line per process:
+  the same id in another process gets a different IP.
 
 ## `proxy serve`
 

@@ -41,10 +41,16 @@ export function render(state) {
     if (row.account) {
       lines.push(`    credit ${money(row.account.credit)}${row.account.email ? dim(`  ${row.account.email}`) : ''}`);
       for (const sub of row.account.subscriptions) {
-        const speed = sub.mbps ? `${sub.mbps} Mbps` : sub.bandwidthGb ? `${sub.bandwidthGb} GB` : '';
+        const speed = sub.mbps
+          ? `${sub.mbps} Mbps`
+          : sub.remainingGb !== undefined && sub.remainingGb !== null
+            ? `${sub.remainingGb}/${sub.bandwidthGb ?? '?'} GB left`
+            : sub.bandwidthGb ? `${sub.bandwidthGb} GB` : '';
+        // Pay-per-GB plans (HProxy) have no renewal to report.
+        const renews = sub.autoRenew === null || sub.autoRenew === undefined ? '' : `  renews ${sub.autoRenew ? 'on' : 'off'}`;
         lines.push(
           `    #${sub.id} ${sub.kind} ${speed} ${sub.active ? green('active') : red('inactive')}` +
-            `  renews ${sub.autoRenew ? 'on' : 'off'}  until ${days(sub.expiresAt)}  ${money(sub.price)}`,
+            `${renews}  until ${days(sub.expiresAt)}  ${money(sub.price)}`,
         );
       }
     } else if (row.error) {

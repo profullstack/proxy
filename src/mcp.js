@@ -8,12 +8,13 @@
  */
 
 import { createInterface } from 'node:readline';
+import { readFileSync } from 'node:fs';
 import { exitIp, formatProxyUrl, maskProxyUrl, proxyFetch, resolveProxy, status } from './index.js';
 
-const VERSION = '0.1.0';
+const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 const targeting = {
-  provider: { type: 'string', enum: ['proxiware', 'webshare'], description: 'Provider; default is the first configured (proxiware, then webshare).' },
+  provider: { type: 'string', enum: ['proxiware', 'webshare', 'hproxy'], description: 'Provider; default is the first configured (proxiware, then webshare, then hproxy).' },
   country: { type: 'string', description: 'ISO country code for the exit, e.g. "us". "ww" for worldwide.' },
   session: { type: 'string', description: 'Sticky session id: the same id keeps the same exit IP.' },
 };

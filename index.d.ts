@@ -1,20 +1,20 @@
 import type { Server } from 'node:http';
 import type { Dispatcher } from 'undici';
 
-export type ProviderName = 'proxiware' | 'webshare';
+export type ProviderName = 'proxiware' | 'webshare' | 'hproxy';
 
 export interface ProxyOptions {
-  /** proxiware | webshare; default PROXY_PROVIDER, else the first configured */
+  /** proxiware | webshare | hproxy; default PROXY_PROVIDER, else the first configured */
   provider?: ProviderName | string;
-  /** ISO 3166 alpha-2 ("us"); "ww" for worldwide. Proxiware defaults to "us". */
+  /** ISO 3166 alpha-2 ("us"); "ww" for worldwide. Proxiware and HProxy default to "us". */
   country?: string;
-  /** Proxiware: state/region */
+  /** Proxiware, HProxy: state/region */
   state?: string;
-  /** Proxiware: city */
+  /** Proxiware, HProxy: city */
   city?: string;
   /** Sticky session: the same id keeps the same exit IP. Webshare maps it to a list index. */
   session?: string | number;
-  /** Proxiware: sticky session lifetime in minutes */
+  /** Proxiware, HProxy: sticky session lifetime in minutes (HProxy 3 to 1440, default 30) */
   ttl?: number;
   udp?: boolean;
   protocol?: 'http' | 'socks5';
@@ -44,6 +44,8 @@ export interface Subscription {
   price: number | null;
   bandwidthGb?: number | null;
   proxies?: number | null;
+  /** HProxy: GB left on a pay-per-GB plan (bandwidthGb is the plan's total) */
+  remainingGb?: number | null;
 }
 
 export interface AccountStatus {
@@ -74,13 +76,14 @@ export interface Provider {
   name: ProviderName;
   label: string;
   env: { user: string; password: string; host: string; port: string; apiKey: string };
-  defaults: { host: string; port: number; country: string | null };
+  defaults: { host: string; port: number; country: string | null; ttl?: number };
   configured(env: Record<string, string | undefined>): boolean;
   username(base: string, options?: ProxyOptions): string;
   credentials(
     env: Record<string, string | undefined>,
     fetchImpl?: typeof fetch,
-  ): Promise<{ user: string; password: string; host: string; port: number }>;
+    options?: ProxyOptions,
+  ): Promise<{ user: string; password: string; host: string; port: number; /** set when the line is already targeted */ username?: string }>;
   status(env: Record<string, string | undefined>, fetchImpl?: typeof fetch): Promise<AccountStatus>;
 }
 
@@ -88,6 +91,10 @@ export const PROVIDERS: Record<ProviderName, Provider>;
 export const DEFAULT_ORDER: ProviderName[];
 export const proxiware: Provider;
 export const webshare: Provider;
+export const hproxy: Provider & {
+  /** The plan lines are generated from: HPROXY_PLAN_ID's, else the first residential plan. */
+  plan(env: Record<string, string | undefined>, fetchImpl?: typeof fetch): Promise<{ id: string; productId?: string }>;
+};
 export function pickProvider(name?: string, env?: Record<string, string | undefined>): Provider;
 
 export function resolveProxy(options?: ProxyOptions): Promise<ResolvedProxy>;

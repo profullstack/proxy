@@ -23,12 +23,14 @@ export { PROVIDERS, DEFAULT_ORDER, pickProvider } from './providers.js';
 export async function resolveProxy(options = {}) {
   const env = options.env ?? process.env;
   const provider = pickProvider(options.provider, env);
-  const credentials = await provider.credentials(env, options.fetch);
+  const credentials = await provider.credentials(env, options.fetch, options);
   return {
     provider: provider.name,
     host: credentials.host,
     port: credentials.port,
-    username: provider.username(credentials.user, options),
+    // A provider that hands back a ready line (HProxy's generate API) has
+    // already applied the targeting.
+    username: credentials.username ?? provider.username(credentials.user, options),
     password: credentials.password,
     protocol: options.protocol === 'socks5' ? 'socks5' : 'http',
   };
