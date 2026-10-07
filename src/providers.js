@@ -2,10 +2,10 @@
  * The proxy providers we hold accounts with, and how each one spells a request.
  *
  * Every provider takes the same options and turns them into its own username
- * syntax, because that is where both of them put targeting: the country, the
+ * syntax, because that is where all of them put targeting: the country, the
  * sticky session and the rest ride in the proxy username, not in a header and
  * not in a separate endpoint. So "give me a US exit that holds for ten minutes"
- * is one object here and two different strings on the wire.
+ * is one object here and a different string per provider on the wire.
  *
  * Credentials come from the environment and nowhere else. This package never
  * reads a file and never writes one; a caller that keeps keys somewhere (a
@@ -15,10 +15,10 @@
 /**
  * @typedef {object} ProxyOptions
  * @property {string} [country]  ISO 3166 alpha-2, any case ("us", "GB")
- * @property {string} [state]    Proxiware only: a state/region slug
- * @property {string} [city]     Proxiware only: a city slug
+ * @property {string} [state]    Proxiware, HProxy: a state/region slug
+ * @property {string} [city]     Proxiware, HProxy: a city slug
  * @property {string|number} [session] keep the same exit IP across requests
- * @property {number} [ttl]      Proxiware only: minutes a sticky session lives
+ * @property {number} [ttl]      Proxiware, HProxy: minutes a sticky session lives
  * @property {'http'|'socks5'} [protocol]
  */
 
@@ -224,10 +224,147 @@ export const webshare = {
   },
 };
 
-export const PROVIDERS = { proxiware, webshare };
+/**
+ * HProxy residential, pay per GB.
+ *
+ * Two ways in, because HProxy documents two:
+ *
+ * - `HPROXY_PROXY_USER` + `HPROXY_PROXY_PASSWORD`: the username is built here
+ *   with the Residential Premium grammar their docs show in full
+ *   (hproxy.com/llms-full.txt, GET /plans/{id}/sessions, read 2026-10-07):
+ *   `<user>-type-residential-country-de-city-berlin-session-<id>-lifetime-<min>`
+ *   on `premium.hproxy.com:10000` (HTTP; 12000 is SOCKS5). The `-state-`
+ *   token, and whether a sessionless username rotates on port 10000, are not
+ *   shown in any example and are unverified.
+ * - `HPROXY_API_KEY` alone: the line comes from `POST /plans/{id}/generate`,
+ *   which HProxy says to use verbatim because "the exact host, port and
+ *   username grammar in the response varies by pool". A session id then maps
+ *   to one generated sticky line per process; another process gets another IP.
+ */
+const HPROXY_API = 'https://hproxy.com/api/v1';
+const hproxyLines = new Map();
+
+async function hproxyJson(path, env, fetchImpl = globalThis.fetch, body) {
+  const init = { headers: { 'X-API-Key': env.HPROXY_API_KEY, accept: 'application/json' }, signal: AbortSignal.timeout(20_000) };
+  if (body === undefined) return getJson(`${HPROXY_API}${path}`, init.headers, fetchImpl);
+  const response = await fetchImpl(`${HPROXY_API}${path}`, {
+    ...init,
+    method: 'POST',
+    headers: { ...init.headers, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(`hproxy: ${path} answered ${response.status}${parsed?.error ? ` (${parsed.error.message ?? parsed.error})` : ''}`);
+    error.status = response.status;
+    throw error;
+  }
+  return parsed;
+}
+
+const hasSession = (options) => options.session !== undefined && options.session !== null && options.session !== '';
+
+export const hproxy = {
+  name: 'hproxy',
+  label: 'HProxy Residential',
+  env: {
+    user: 'HPROXY_PROXY_USER',
+    password: 'HPROXY_PROXY_PASSWORD',
+    host: 'HPROXY_PROXY_HOST',
+    port: 'HPROXY_PROXY_PORT',
+    apiKey: 'HPROXY_API_KEY',
+  },
+  defaults: { host: 'premium.hproxy.com', port: 10000, country: 'us', ttl: 30 },
+
+  configured(env) {
+    return Boolean((env.HPROXY_PROXY_USER && env.HPROXY_PROXY_PASSWORD) || env.HPROXY_API_KEY);
+  },
+
+  username(base, options = {}) {
+    // A username copied from a generated line already carries targeting; the
+    // new targeting is built on the bare account name.
+    let name = `${base.replace(/-(type|country|state|city|asn|os|session|lifetime|requireUdp)-.*$/, '')}-type-residential`;
+    const country = options.country ?? this.defaults.country;
+    if (country && lower(country) !== 'ww') name += `-country-${lower(country)}`;
+    if (options.state) name += `-state-${slug(options.state)}`;
+    if (options.city) name += `-city-${slug(options.city)}`;
+    if (options.udp) name += '-requireUdp-true';
+    if (hasSession(options)) {
+      name += `-session-${String(options.session).replace(/[^A-Za-z0-9]/g, '')}`;
+      // Premium takes 3 to 1440 minutes, and both documented lines carry one.
+      name += `-lifetime-${Math.min(1440, Math.max(3, Number(options.ttl) || this.defaults.ttl))}`;
+    }
+    return name;
+  },
+
+  async credentials(env, fetchImpl, options = {}) {
+    const host = env.HPROXY_PROXY_HOST || this.defaults.host;
+    const port = Number(env.HPROXY_PROXY_PORT || this.defaults.port);
+    if (env.HPROXY_PROXY_USER && env.HPROXY_PROXY_PASSWORD) {
+      return { user: env.HPROXY_PROXY_USER, password: env.HPROXY_PROXY_PASSWORD, host, port };
+    }
+    need(env, [this.env.apiKey], this.name);
+    const planId = env.HPROXY_PLAN_ID || (await this.plan(env, fetchImpl)).id;
+    const country = options.country ?? this.defaults.country;
+    const body = { protocol: options.protocol === 'socks5' ? 'socks5' : 'http' };
+    if (country && lower(country) !== 'ww') body.country = country.toUpperCase();
+    if (options.state) body.state = String(options.state);
+    if (options.city) body.city = String(options.city);
+    if (options.udp) body.udp = true;
+    if (hasSession(options)) body.stickyMinutes = Math.min(1440, Math.max(3, Number(options.ttl) || this.defaults.ttl));
+    const key = JSON.stringify([env.HPROXY_API_KEY, planId, body, hasSession(options) ? String(options.session) : null]);
+    let line = hproxyLines.get(key);
+    if (!line) {
+      const generated = await hproxyJson(`/plans/${encodeURIComponent(planId)}/generate`, env, fetchImpl, body);
+      line = generated?.lines?.[0];
+      if (!line) throw new Error('hproxy: generate returned no lines');
+      hproxyLines.set(key, line);
+    }
+    // host:port:user:pass, and a password may itself hold a colon.
+    const [lineHost, linePort, user, ...rest] = line.split(':');
+    return { user, password: rest.join(':'), host: lineHost, port: Number(linePort), username: user };
+  },
+
+  /** The plan to generate lines from: the first residential one. */
+  async plan(env, fetchImpl) {
+    const { plans = [] } = (await hproxyJson('/plans', env, fetchImpl)) ?? {};
+    const plan = plans.find((p) => String(p.productId ?? p.product).startsWith('residential')) ?? plans[0];
+    if (!plan) throw new Error('hproxy: the account has no active plan (buy GB first)');
+    return plan;
+  },
+
+  /** Wallet, and GB left on each plan, from https://hproxy.com/docs/proxy-api */
+  async status(env, fetchImpl) {
+    need(env, [this.env.apiKey], this.name);
+    const [me, wallet, plans] = await Promise.all([
+      hproxyJson('/me', env, fetchImpl),
+      hproxyJson('/wallet', env, fetchImpl),
+      hproxyJson('/plans', env, fetchImpl).catch(() => ({ plans: [] })),
+    ]);
+    return {
+      provider: this.name,
+      email: me?.email ?? null,
+      credit: typeof wallet?.balanceCents === 'number' ? wallet.balanceCents / 100 : null,
+      subscriptions: (plans?.plans ?? []).map((plan) => ({
+        id: plan.id,
+        kind: plan.productId ?? plan.product ?? 'unknown',
+        network: plan.product ?? null,
+        mbps: null,
+        active: true, // GET /plans lists active plans only
+        autoRenew: null,
+        expiresAt: plan.expiresAt ?? null,
+        price: null,
+        bandwidthGb: plan.dataGbTotal ?? null,
+        remainingGb: plan.dataGbRemaining ?? null,
+      })),
+    };
+  },
+};
+
+export const PROVIDERS = { proxiware, webshare, hproxy };
 
 /** Preference order when the caller names no provider. */
-export const DEFAULT_ORDER = ['proxiware', 'webshare'];
+export const DEFAULT_ORDER = ['proxiware', 'webshare', 'hproxy'];
 
 /**
  * Pick a provider: the named one, else `PROXY_PROVIDER`, else the first one
@@ -246,7 +383,8 @@ export function pickProvider(name, env = process.env) {
   if (found) return found;
   const error = new Error(
     'no proxy provider configured: set PROXIWARE_PROXY_USER + PROXIWARE_PROXY_PASSWORD, ' +
-      'or WEBSHARE_API_KEY (or WEBSHARE_PROXY_USER + WEBSHARE_PROXY_PASSWORD)',
+      'or WEBSHARE_API_KEY (or WEBSHARE_PROXY_USER + WEBSHARE_PROXY_PASSWORD), ' +
+      'or HPROXY_PROXY_USER + HPROXY_PROXY_PASSWORD (or HPROXY_API_KEY)',
   );
   error.code = 'PROXY_CREDENTIALS_MISSING';
   throw error;

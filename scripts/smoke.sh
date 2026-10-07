@@ -24,6 +24,13 @@ step() { printf '\n--- %s\n' "$*"; }
 step "providers"; node bin/proxy.js providers
 step "exit ip (default provider, us)"; node bin/proxy.js ip
 step "sticky gb session, twice: same ip expected"; node bin/proxy.js ip -c gb -s 4242; node bin/proxy.js ip -c gb -s 4242
+if [ -n "${HPROXY_PROXY_USER:-}${HPROXY_API_KEY:-}" ]; then
+  step "hproxy: rotating us, then a sticky de session twice (same ip expected)"
+  node bin/proxy.js -p hproxy ip; node bin/proxy.js -p hproxy ip -c us
+  node bin/proxy.js -p hproxy ip -c de -s 4242 --ttl 10; node bin/proxy.js -p hproxy ip -c de -s 4242 --ttl 10
+else
+  step "hproxy: skipped (no HPROXY_PROXY_USER or HPROXY_API_KEY)"
+fi
 step "status"; node bin/proxy.js status
 step "url (masked)"; node bin/proxy.js url
 step "fetch ESPN (allowlists curl-like UAs)"

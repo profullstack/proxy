@@ -11,7 +11,7 @@ import { PROVIDERS } from './providers.js';
 
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
-export const HELP = `proxy — call the web through our paid proxies (Proxiware, Webshare)
+export const HELP = `proxy — call the web through our paid proxies (Proxiware, Webshare, HProxy)
 
   proxy <url>                 fetch a URL through the proxy, body to stdout
   proxy ip                    exit IP, country, city and ISP
@@ -24,11 +24,11 @@ export const HELP = `proxy — call the web through our paid proxies (Proxiware,
   proxy tui                   account dashboard with a live exit test
 
 targeting (any command):
-  -p, --provider NAME         proxiware | webshare (default: PROXY_PROVIDER, else first configured)
-  -c, --country CC            exit country, e.g. us, gb; "ww" for worldwide (proxiware default: us)
+  -p, --provider NAME         proxiware | webshare | hproxy (default: PROXY_PROVIDER, else first configured)
+  -c, --country CC            exit country, e.g. us, gb; "ww" for worldwide (proxiware, hproxy default: us)
   -s, --session ID            sticky session: same id, same exit IP
-      --ttl MIN               proxiware: sticky session lifetime in minutes
-      --state S, --city C     proxiware: narrower targeting
+      --ttl MIN               proxiware, hproxy: sticky session lifetime in minutes (hproxy 3-1440, default 30)
+      --state S, --city C     proxiware, hproxy: narrower targeting
 
 fetching:
   -X, --method M              HTTP method (default GET, or POST with -d)
@@ -45,6 +45,9 @@ credentials (environment):
   PROXIWARE_API_KEY           account status
   WEBSHARE_API_KEY            account status, and the proxy login when no user/password is set
   WEBSHARE_PROXY_USER, WEBSHARE_PROXY_PASSWORD [, WEBSHARE_PROXY_HOST, WEBSHARE_PROXY_PORT]
+  HPROXY_PROXY_USER, HPROXY_PROXY_PASSWORD [, HPROXY_PROXY_HOST, HPROXY_PROXY_PORT]
+  HPROXY_API_KEY              account status, and generated lines when no user/password is set
+                              [, HPROXY_PLAN_ID: which plan, else the first residential one]
 `;
 
 const SHORT = { p: 'provider', c: 'country', s: 'session', X: 'method', H: 'header', d: 'data', i: 'include', I: 'head', o: 'output', A: 'user-agent', h: 'help', v: 'version' };
@@ -179,8 +182,9 @@ export async function run(argv, io = {}) {
             for (const sub of row.account.subscriptions) {
               out.stdout.write(
                 `  #${sub.id} ${sub.kind}${sub.mbps ? ` ${sub.mbps} Mbps` : ''} ${sub.active ? 'active' : 'inactive'}` +
-                  `, renew ${sub.autoRenew ? 'on' : 'off'}, until ${sub.expiresAt ?? '?'}` +
-                  `${sub.price !== null && sub.price !== undefined ? `, $${Number(sub.price).toFixed(2)}` : ''}\n`,
+                  `${sub.autoRenew === null || sub.autoRenew === undefined ? '' : `, renew ${sub.autoRenew ? 'on' : 'off'}`}, until ${sub.expiresAt ?? '?'}` +
+                  `${sub.price !== null && sub.price !== undefined ? `, $${Number(sub.price).toFixed(2)}` : ''}` +
+                  `${sub.remainingGb !== null && sub.remainingGb !== undefined ? `, ${sub.remainingGb}/${sub.bandwidthGb ?? '?'} GB left` : ''}\n`,
               );
             }
           } else {
