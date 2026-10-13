@@ -27,6 +27,14 @@ Providers:
 ## Install
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/profullstack/proxy/main/install.sh | sh
+```
+
+No root needed: it installs under `~/.local` (fetching a private Node if yours is too old). Run it again to update; remove with `sh ~/.local/share/proxy/uninstall.sh`.
+
+Or with npm:
+
+```sh
 npm install -g @profullstack/proxy     # the `proxy` command
 npm install @profullstack/proxy        # the library
 ```
